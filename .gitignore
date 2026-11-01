@@ -1,0 +1,8 @@
+﻿*.ipk
+*.apk
+*.o
+*.ko
+/build_dir/
+/tmp/
+.DS_Store
+Thumbs.db

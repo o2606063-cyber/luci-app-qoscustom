@@ -1,0 +1,18 @@
+{
+	"luci-app-qoscustom": {
+		"description": "QoS 流量控制（CAKE + HTB）",
+		"read": {
+			"uci": [ "qoscustom" ],
+			"file": {
+				"/usr/bin/tc": [ "exec" ],
+				"/etc/init.d/qos-custom": [ "exec" ]
+			}
+		},
+		"write": {
+			"uci": [ "qoscustom" ],
+			"file": {
+				"/etc/init.d/qos-custom": [ "exec" ]
+			}
+		}
+	}
+}

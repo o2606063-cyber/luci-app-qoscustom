@@ -1,0 +1,7 @@
+config settings 'settings'
+	option enabled '1'
+	option interface 'pppoe-wan'
+	option lan_iface 'br-lan'
+	option uplink_mbit '95'
+	option downlink_mbit '1150'
+	option lan_bypass '1'

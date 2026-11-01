@@ -1,0 +1,73 @@
+#!/bin/sh /etc/rc.common
+# 自定义 QoS：上行 CAKE 整形 + 下行 HTB 分类(内网互传不限速) + CAKE
+# 参数从 /etc/config/qoscustom 读取，可用 LuCI「QoS 流量控制」页面修改
+START=99
+STOP=10
+USE_PROCD=0
+
+UCI_CONF=qoscustom
+
+load_conf() {
+    ENABLED=1
+    UPLINK=95
+    DOWNLINK=1150
+    LAN_BYPASS=1
+    WAN_IF=pppoe-wan
+    LAN_IF=br-lan
+    LAN_CIDR=192.168.50.0/24
+
+    config_load "$UCI_CONF"
+    config_get_bool ENABLED settings enabled 1
+    config_get UPLINK settings uplink_mbit 95
+    config_get DOWNLINK settings downlink_mbit 1150
+    config_get_bool LAN_BYPASS settings lan_bypass 1
+    config_get WAN_IF settings interface pppoe-wan
+    config_get LAN_IF settings lan_iface br-lan
+}
+
+cleanup() {
+    tc qdisc del dev "$WAN_IF" root 2>/dev/null
+    tc qdisc del dev "$LAN_IF" root 2>/dev/null
+}
+
+apply_qos() {
+    local i=0
+    while [ $i -lt 30 ]; do
+        ip link show "$WAN_IF" >/dev/null 2>&1 && break
+        sleep 2
+        i=$((i+1))
+    done
+
+    cleanup
+
+    # 上行整形
+    tc qdisc add dev "$WAN_IF" root cake bandwidth "${UPLINK}Mbit" besteffort nat dual-srchost 2>/dev/null
+
+    # 下行整形
+    if [ "$LAN_BYPASS" = "1" ]; then
+        tc qdisc add dev "$LAN_IF" root handle 1: htb default 20 2>/dev/null
+        tc class add dev "$LAN_IF" parent 1: classid 1:10 htb rate 10000mbit ceil 10000mbit 2>/dev/null
+        tc class add dev "$LAN_IF" parent 1: classid 1:20 htb rate "${DOWNLINK}mbit" ceil "${DOWNLINK}mbit" 2>/dev/null
+        tc qdisc add dev "$LAN_IF" parent 1:20 handle 20: cake bandwidth "${DOWNLINK}mbit" besteffort nat dual-dsthost 2>/dev/null
+        tc filter add dev "$LAN_IF" parent 1: protocol ip prio 1 u32 match ip src "$LAN_CIDR" flowid 1:10 2>/dev/null
+    else
+        tc qdisc add dev "$LAN_IF" root cake bandwidth "${DOWNLINK}mbit" besteffort nat dual-dsthost 2>/dev/null
+    fi
+}
+
+start_service() {
+    load_conf
+    [ "$ENABLED" = "1" ] || { logger -t qos-custom "disabled by config"; return 0; }
+    apply_qos
+    logger -t qos-custom "applied: up=${UPLINK}M down=${DOWNLINK}M bypass=${LAN_BYPASS}"
+}
+
+stop_service() {
+    load_conf
+    cleanup
+    logger -t qos-custom "stopped"
+}
+
+boot() {
+    start_service
+}

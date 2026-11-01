@@ -1,0 +1,13 @@
+{
+	"admin/services/qoscustom": {
+		"title": "QoS 流量控制",
+		"order": 32,
+		"action": {
+			"type": "view",
+			"path": "qoscustom/overview"
+		},
+		"depends": {
+			"acl": [ "luci-app-qoscustom" ]
+		}
+	}
+}
