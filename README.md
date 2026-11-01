@@ -11,6 +11,8 @@
 > shaped on the LAN bridge egress instead of via IFB, with a u32 filter that exempts LAN-to-LAN
 > traffic so your internal 2.5G/10G transfers stay unthrottled.
 
+![LuCI 界面](docs/screenshot.png)
+
 ---
 
 ## 它解决什么问题
@@ -84,24 +86,58 @@ ssh root@192.168.1.1 'chmod +x /usr/bin/tc && tc -V'
 
 ## 安装
 
-### 方式一：一键脚本（推荐，适合已经跑着的系统）
+预编译产物在 [Releases](https://github.com/o2606063-cyber/luci-app-qoscustom/releases) 页面：
+
+| 资产 | 适用 | 说明 |
+|---|---|---|
+| `luci-app-qoscustom_1.0.0-1_all.ipk` | **opkg** 系统（OpenWrt ≤ 23.x） | 架构无关（`all`），任何平台都能装 |
+| `luci-app-qoscustom-1.0.0-all.tar.gz` | **任意系统**（含 apk） | 便携包，解压后跑 `install.sh` |
+
+### 方式一：opkg 系统直接装包
 
 ```sh
-curl -LO https://raw.githubusercontent.com/<你的用户名>/luci-app-qoscustom/main/install.sh
+wget -O /tmp/qos.ipk https://github.com/o2606063-cyber/luci-app-qoscustom/releases/download/v1.0.0/luci-app-qoscustom_1.0.0-1_all.ipk
+opkg install /tmp/qos.ipk
+```
+
+### 方式二：apk 系统 / 任意系统（便携包，推荐）
+
+> ⚠️ **本项目暂不提供预编译 `.apk` 包。**
+> apk v2 格式的包必须由 OpenWrt SDK 里的 `abuild` 生成（含签名段与 datahash 结构），
+> 手工拼装的包会被 `apk` 拒绝（`v2 package format error` / `unexpected end of file`）。
+> 在 apk 系统上请用下面的便携包，效果与装包完全相同。
+
+```sh
+wget -O /tmp/qos.tar.gz https://github.com/o2606063-cyber/luci-app-qoscustom/releases/download/v1.0.0/luci-app-qoscustom-1.0.0-all.tar.gz
+cd /tmp && tar xzf qos.tar.gz && cd luci-app-qoscustom-1.0.0
 sh install.sh
 ```
 
-脚本会做四件事：复制文件 → 重启 `rpcd`/`uhttpd` → 清 LuCI 缓存 → 启动 QoS 服务。
+脚本会做四件事：复制文件 → 关流量卸载 → 重启 `rpcd`/`uhttpd` 并清 LuCI 缓存 → 启动 QoS 服务。
 
-### 方式二：作为 OpenWrt 软件包编译
-
-把本目录放进你的 feed（例如 `package/luci-app-qoscustom`），然后：
+### 方式三：从源码一键安装
 
 ```sh
+git clone https://github.com/o2606063-cyber/luci-app-qoscustom.git
+cd luci-app-qoscustom
+sh install.sh
+```
+
+### 方式四：作为 OpenWrt 软件包编译（含 `.apk`）
+
+把本目录放进你的 feed（例如 `package/luci-app-qoscustom`），然后用官方 SDK 编译：
+
+```sh
+# 产出 .ipk（OpenWrt ≤23.x）
+make package/luci-app-qoscustom/compile V=s
+
+# 产出 .apk（OpenWrt 24.10+ / iStoreOS 2.x，使用 apk-tools 3）
 make package/luci-app-qoscustom/compile V=s
 ```
 
-### 方式三：手动复制
+SDK 会自动生成符合 apk 规范的包（含 `datahash` 与签名段），这是获得 `.apk` 的唯一可靠方式。
+
+### 方式五：手动复制
 
 ```sh
 # 1. 复制文件
