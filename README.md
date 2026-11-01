@@ -64,12 +64,28 @@ ERROR: unable to select packages:
 |---|---|---|
 | OpenWrt / iStoreOS（LuCI 21.02+） | 需要 JS 版 LuCI | `cat /etc/openwrt_release` |
 | 内核有 `sch_cake.ko` / `sch_htb.ko` | 绝大多数现代内核都自带 | `ls /lib/modules/$(uname -r)/ \| grep sch_cake` |
-| **`tc` 命令** | 有些精简固件没打包它（见下方“没有 tc 怎么办”） | `tc -V` |
+| **`tc` 命令** | 有些精简固件没打包它 —— **本项目已内置四个架构的 tc**，装包/脚本会自动处理 | `tc -V` |
 
-### 没有 `tc` 怎么办
+### 关于架构：一个包通吃
 
-如果 `which tc` 为空、且 `apk search iproute2-tc` / `opkg list | grep tc` 都找不到，
-可以从 **Alpine Linux 同架构包**里取一个（musl + aarch64 与 OpenWrt 兼容）：
+本项目打包为 **`Architecture: all`** —— 它只有 shell / JS / JSON，**没有一行二进制**，
+所以 `_all.ipk` 在 `aarch64` / `armv7` / `x86_64` / `x86` 上通用，不需要按架构分别编译。
+
+真正与架构相关的是 **`tc`**，本项目已在 `prebuilt/tc/` 内置四个架构的版本：
+
+| 目录 | `uname -m` | OpenWrt arch | 大小 | 验证 |
+|---|---|---|---|---|
+| `prebuilt/tc/aarch64/` | `aarch64` | `aarch64_cortex-a53` | 551 KB | ✅ iStoreOS 实测可用 |
+| `prebuilt/tc/armv7/` | `armv7l` | `arm_cortex-a7` | 377 KB | 同源，未实机验证 |
+| `prebuilt/tc/x86_64/` | `x86_64` | `x86_64` | 491 KB | 同源，未实机验证 |
+| `prebuilt/tc/x86/` | `i686` | `i386_pentium4` | 488 KB | 同源，未实机验证 |
+
+`install.sh` 会**自动识别架构并在 `tc` 缺失时安装对应的内置版本**，无需手动操作。
+
+> 这些二进制来自 Alpine Linux 的 `iproute2-tc` 包，遵循 **GPL-2.0**（与本项目 MIT 不同），
+> 详见 [`prebuilt/tc/README.md`](prebuilt/tc/README.md)（含 sha256 与来源地址）。
+
+### 也要自己动手装 `tc` 的话
 
 ```sh
 # 在 PC 上（以 aarch64 为例）
@@ -257,8 +273,10 @@ sh -x /etc/rc.common /etc/init.d/qos-custom start | tail -40
 ├── root/etc/init.d/qos-custom                                # 服务（读 UCI 挂 tc 规则）
 ├── root/usr/share/luci/menu.d/luci-app-qoscustom.json        # 菜单
 ├── root/usr/share/rpcd/acl.d/luci-app-qoscustom.json         # 权限
-├── install.sh                                                # 一键安装
+├── prebuilt/tc/{aarch64,armv7,x86_64,x86}/tc                 # 内置 tc（GPL-2.0，见其 README）
+├── install.sh                                                # 一键安装（自动装 tc）
 ├── uninstall.sh                                              # 卸载
+├── build-ipk.sh                                              # 重新生成 _all.ipk
 └── Makefile                                                  # OpenWrt 软件包
 ```
 

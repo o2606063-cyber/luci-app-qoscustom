@@ -12,22 +12,51 @@ err()  { printf "${RED}[x]${NC} %s\n" "$1"; }
 
 SRC=$(cd "$(dirname "$0")" && pwd)
 
-# ---------- 前置检查 ----------
-info "检查依赖..."
+# ---------- 架构识别 ----------
+detect_arch() {
+    case "$(uname -m)" in
+        aarch64|arm64)       echo aarch64 ;;
+        armv7l|armv7*|armv6*) echo armv7 ;;
+        x86_64|amd64)        echo x86_64 ;;
+        i386|i486|i586|i686)  echo x86 ;;
+        *)                   echo "" ;;
+    esac
+}
+ARCH=$(detect_arch)
+info "检测到架构: $(uname -m) → ${ARCH:-未知}"
 
+# ---------- 依赖：tc ----------
 if ! command -v tc >/dev/null 2>&1; then
-    err "缺少 tc 命令。"
-    echo "  从 Alpine 同架构包取一个即可，详见 README 的「没有 tc 怎么办」一节。"
-    exit 1
-fi
-
-KREL=$(uname -r)
-if [ -d "/lib/modules/$KREL" ]; then
-    if ! ls "/lib/modules/$KREL" | grep -q sch_cake; then
-        warn "内核里没找到 sch_cake.ko，CAKE 可能不可用（将回退失败）。"
+    if [ -n "$ARCH" ] && [ -f "$SRC/prebuilt/tc/$ARCH/tc" ]; then
+        warn "系统缺少 tc 命令，安装内置的 $ARCH 版本..."
+        cp "$SRC/prebuilt/tc/$ARCH/tc" /usr/bin/tc
+        chmod 755 /usr/bin/tc
+        if [ -d "$SRC/prebuilt/tc/$ARCH/dist" ]; then
+            mkdir -p /usr/lib/tc
+            cp -f "$SRC/prebuilt/tc/$ARCH/dist/"*.dist /usr/lib/tc/ 2>/dev/null || true
+        fi
+        if tc -V >/dev/null 2>&1; then
+            info "tc 安装成功: $(tc -V 2>&1 | head -1)"
+        else
+            err "tc 已复制但无法运行，可能缺少动态库（试 ldd /usr/bin/tc）"
+            exit 1
+        fi
+    else
+        err "缺少 tc 命令，且没有匹配当前架构的内置二进制。"
+        echo "  参见 README 的「没有 tc 怎么办」一节，或手动从 Alpine 取一个。"
+        exit 1
     fi
 else
-    warn "/lib/modules/$KREL 不存在，无法确认内核模块（可能是内置）。"
+    info "tc 已存在: $(tc -V 2>&1 | head -1)"
+fi
+
+# ---------- 内核模块检查 ----------
+KREL=$(uname -r)
+if [ -d "/lib/modules/$KREL" ]; then
+    ls "/lib/modules/$KREL" | grep -q sch_cake || warn "内核里没找到 sch_cake.ko，CAKE 可能不可用。"
+    ls "/lib/modules/$KREL" | grep -q sch_htb  || warn "内核里没找到 sch_htb.ko，HTB 分类可能不可用。"
+else
+    warn "/lib/modules/$KREL 不存在，无法确认内核模块（可能已内置）。"
 fi
 
 # ---------- 复制文件 ----------
@@ -42,7 +71,7 @@ cp "$SRC/root/usr/share/rpcd/acl.d/luci-app-qoscustom.json" /usr/share/rpcd/acl.
 cp "$SRC/htdocs/luci-static/resources/view/qoscustom/overview.js" \
    /www/luci-static/resources/view/qoscustom/overview.js
 
-chmod +x /etc/init.d/qos-custom
+chmod 755 /etc/init.d/qos-custom
 chmod 644 /www/luci-static/resources/view/qoscustom/overview.js \
           /usr/share/luci/menu.d/luci-app-qoscustom.json \
           /usr/share/rpcd/acl.d/luci-app-qoscustom.json
@@ -50,8 +79,8 @@ chmod 644 /www/luci-static/resources/view/qoscustom/overview.js \
 # ---------- 关闭流量卸载（QoS 必须）----------
 info "关闭流量卸载（flow offloading）..."
 if [ -f /etc/config/firewall ]; then
-    uci set firewall.@defaults[0].flow_offloading='0'      2>/dev/null || true
-    uci set firewall.@defaults[0].flow_offloading_hw='0'   2>/dev/null || true
+    uci set firewall.@defaults[0].flow_offloading='0'    2>/dev/null || true
+    uci set firewall.@defaults[0].flow_offloading_hw='0' 2>/dev/null || true
     uci commit firewall
     /etc/init.d/firewall reload >/dev/null 2>&1 || true
 else
@@ -70,10 +99,13 @@ info "启动 QoS 服务..."
 sleep 2
 
 # ---------- 结果 ----------
+WAN=$(uci get qoscustom.settings.interface 2>/dev/null || echo pppoe-wan)
+LAN=$(uci get qoscustom.settings.lan_iface  2>/dev/null || echo br-lan)
+
 echo
 info "完成。当前规则："
-tc qdisc show dev "$(uci get qoscustom.settings.interface 2>/dev/null || echo pppoe-wan)" 2>/dev/null | head -1 || true
-tc class show dev "$(uci get qoscustom.settings.lan_iface 2>/dev/null || echo br-lan)" 2>/dev/null | head -2 || true
+tc qdisc show dev "$WAN" 2>/dev/null | head -1 || true
+tc class show dev "$LAN" 2>/dev/null | head -2 || true
 
 echo
 info "打开 LuCI → 服务 → QoS 流量控制 进行配置。"
