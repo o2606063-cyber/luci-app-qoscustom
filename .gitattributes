@@ -1,0 +1,13 @@
+# 强制 LF：OpenWrt 上的 /bin/sh 不接受 CRLF
+* text=auto eol=lf
+
+*.sh        text eol=lf
+*.js        text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+Makefile    text eol=lf
+LICENSE     text eol=lf
+/etc/config/* text eol=lf
+
+*.png       binary
+*.ipk       binary
